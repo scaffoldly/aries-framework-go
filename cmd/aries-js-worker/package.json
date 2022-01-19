@@ -1,6 +1,6 @@
 {
   "name": "@scaffoldly/aries-framework-go-for-slygo",
-  "version": "0.0.2-2",
+  "version": "0.0.2-3",
   "main": "dist/node/aries.js",
   "browser": "dist/web/aries.js",
   "description": "APIs for building DIDComm and Hyperledger Aries applications.",
