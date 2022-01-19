@@ -1,5 +1,5 @@
 {
-  "name": "@hyperledger/aries-framework-go",
+  "name": "@scaffoldly/aries-framework-go",
   "version": "0.0.1",
   "main": "dist/node/aries.js",
   "browser": "dist/web/aries.js",
