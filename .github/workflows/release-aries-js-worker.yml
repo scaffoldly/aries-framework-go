@@ -29,7 +29,7 @@ jobs:
         working-directory: cmd/aries-js-worker
       - uses: scaffoldly/bump-version-action@v1
         with:
-          action: postrelease
+          action: prerelease
           version-file: cmd/aries-js-worker/package.json
           repo-token: ${{ secrets.GITHUB_TOKEN }}
       - run: npm publish --access public
