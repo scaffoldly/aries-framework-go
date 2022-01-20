@@ -19,14 +19,10 @@ jobs:
         with:
           node-version: '12'
           registry-url: 'https://registry.npmjs.org'
-      - uses: actions/cache@v2
+      - uses: actions/setup-go@v2
         with:
-          path: ./node_modules
-          key: ${{ runner.os }}-yarn-${{ hashFiles('**/yarn.lock') }}
-          restore-keys: |
-            ${{ runner.os }}-yarn-
+          go-version: 1.17
       - run: npm ci
-      - run: npm build
       - run: ls -alR dist
       - uses: scaffoldly/bump-version-action@v1
         with:
