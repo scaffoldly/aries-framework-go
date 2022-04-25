@@ -783,7 +783,7 @@ func authorizationMiddleware(token string) mux.MiddlewareFunc {
 	return middleware
 }
 
-func (parameters AgentParameters) CreateRouter() (*mux.Router, error) {
+func (parameters AgentParameters) NewRouter() (*mux.Router, error) {
 	if parameters.host == "" {
 		return nil, errMissingHost
 	}
@@ -822,7 +822,7 @@ func (parameters AgentParameters) CreateRouter() (*mux.Router, error) {
 func startAgent(parameters *AgentParameters) error {
 	logger.Infof("Starting aries agent rest on host [%s]", parameters.host)
 
-	router, err := parameters.CreateRouter()
+	router, err := parameters.NewRouter()
 	if err != nil {
 		return fmt.Errorf("failed to start aries agent rest on port [%s], unable to create router:  %w", parameters.host, err)
 	}
