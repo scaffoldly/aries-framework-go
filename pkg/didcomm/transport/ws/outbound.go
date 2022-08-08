@@ -22,13 +22,30 @@ const webSocketScheme = "ws"
 
 // OutboundClient websocket outbound.
 type OutboundClient struct {
-	pool *connPool
-	prov transport.Provider
+	pool      *connPool
+	prov      transport.Provider
+	readLimit int64
+}
+
+// OutboundClientOpt configures outbound client.
+type OutboundClientOpt func(c *OutboundClient)
+
+// WithOutboundReadLimit sets the custom max number of bytes to read for a single message.
+func WithOutboundReadLimit(n int64) OutboundClientOpt {
+	return func(c *OutboundClient) {
+		c.readLimit = n
+	}
 }
 
 // NewOutbound creates a client for Outbound WS transport.
-func NewOutbound() *OutboundClient {
-	return &OutboundClient{}
+func NewOutbound(opts ...OutboundClientOpt) *OutboundClient {
+	c := &OutboundClient{}
+
+	for _, opt := range opts {
+		opt(c)
+	}
+
+	return c
 }
 
 // Start starts the outbound transport.
@@ -69,12 +86,15 @@ func (cs *OutboundClient) AcceptRecipient(keys []string) bool {
 	return acceptRecipient(cs.pool, keys)
 }
 
+//nolint:gocyclo,funlen
 func (cs *OutboundClient) getConnection(destination *service.Destination) (*websocket.Conn, func(), error) {
 	var conn *websocket.Conn
 
 	// get the connection for the routing or recipient keys
 	keys := destination.RecipientKeys
-	if len(destination.RoutingKeys) != 0 {
+	if routingKeys, err := destination.ServiceEndpoint.RoutingKeys(); err == nil && len(routingKeys) != 0 {
+		keys = routingKeys
+	} else if len(destination.RoutingKeys) != 0 {
 		keys = destination.RoutingKeys
 	}
 
@@ -92,11 +112,23 @@ func (cs *OutboundClient) getConnection(destination *service.Destination) (*webs
 		return conn, cleanup, nil
 	}
 
-	var err error
+	var (
+		err error
+		uri string
+	)
 
-	conn, _, err = websocket.Dial(context.Background(), destination.ServiceEndpoint, nil)
+	uri, err = destination.ServiceEndpoint.URI()
+	if err != nil {
+		return nil, cleanup, fmt.Errorf("unable to send ws outbound request: %w", err)
+	}
+
+	conn, _, err = websocket.Dial(context.Background(), uri, nil)
 	if err != nil {
 		return nil, cleanup, fmt.Errorf("websocket client : %w", err)
+	}
+
+	if cs.readLimit > 0 {
+		conn.SetReadLimit(cs.readLimit)
 	}
 
 	// keep the connection open to listen to the response in case of return route option set

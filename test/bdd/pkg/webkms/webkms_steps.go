@@ -126,7 +126,7 @@ func (c *SDKSteps) createKey(agentID, keyType string) error {
 func (c *SDKSteps) exportPubKey(agentID string) error {
 	agent := c.bddContext.AgentCtx[agentID]
 
-	keyBytes, err := agent.KMS().ExportPubKeyBytes(c.keyIDs[agentID])
+	keyBytes, _, err := agent.KMS().ExportPubKeyBytes(c.keyIDs[agentID])
 	if err != nil {
 		return err
 	}
@@ -314,12 +314,17 @@ func (c *SDKSteps) wrapKeyWithSenderKey(agentID, recipient string) error {
 		return err
 	}
 
+	kh, err := agent.KMS().Get(c.keyIDs[agentID])
+	if err != nil {
+		return err
+	}
+
 	cek := generateRandomBytes(defaultKeySize)
 
 	wrappedKey, err := agent.Crypto().WrapKey(
 		cek, []byte("sender"), []byte("recipient"),
 		recipientPubKey,
-		crypto.WithSender(c.keyIDs[agentID]),
+		crypto.WithSender(kh),
 	)
 	if err != nil {
 		return err

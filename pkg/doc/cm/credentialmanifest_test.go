@@ -172,25 +172,47 @@ func TestCredentialManifest_Unmarshal(t *testing.T) {
 		require.EqualError(t, err, "invalid credential manifest: display title for output descriptor at "+
 			"index 0 is invalid: UnknownFormat is not a valid string schema format")
 	})
+	t.Run("Missing paths and text", func(t *testing.T) {
+		var credentialManifest cm.CredentialManifest
+
+		err := json.Unmarshal(createMarshalledCredentialManifestWithMissingPropertyJSONPathAndText(t), &credentialManifest)
+		require.EqualError(t, err, "invalid credential manifest: display property at index 0 for output descriptor at "+
+			"index 0 is invalid: display mapping object must contain either a paths or a text property")
+	})
 }
 
 func TestResolveFulfillment(t *testing.T) {
+	type match struct {
+		Title       string
+		Subtitle    string
+		Description string
+		Properties  map[string]*cm.ResolvedProperty
+	}
+
+	// nolint:lll
 	t.Run("Successes", func(t *testing.T) {
 		testTable := map[string]struct {
 			manifest    []byte
 			fulfillment []byte
-			expected    map[string]*cm.ResolvedDescriptor
+			expected    map[string]*match
 		}{
 			"single descriptor and credential": {
 				manifest:    credentialManifestDriversLicense,
 				fulfillment: vpWithDriversLicenseVCAndCredentialFulfillment,
-				expected: map[string]*cm.ResolvedDescriptor{
+				expected: map[string]*match{
 					"driver_license_output": {
-						Resolved: &cm.ResolvedDataDisplayDescriptor{
-							Title:    "Washington State Driver License",
-							Subtitle: "Class A, Commercial",
-							Properties: map[string]interface{}{
-								"Driving License Number": "34DGE352",
+						Title:    "Washington State Driver License",
+						Subtitle: "Class A, Commercial",
+						Description: "License to operate a vehicle with a gross combined weight " +
+							"rating (GCWR) of 26,001 or more pounds, as long as the GVWR of the vehicle(s) " +
+							"being towed is over 10,000 pounds.",
+						Properties: map[string]*cm.ResolvedProperty{
+							"Driving License Number": {
+								Label: "Driving License Number",
+								Value: "34DGE352",
+								Schema: cm.Schema{
+									Type: "boolean",
+								},
 							},
 						},
 					},
@@ -199,24 +221,22 @@ func TestResolveFulfillment(t *testing.T) {
 			"multiple descriptor and credentials": {
 				manifest:    credentialManifestMultipleVCs,
 				fulfillment: vpMultipleWithCredentialFulfillment,
-				expected: map[string]*cm.ResolvedDescriptor{
+				expected: map[string]*match{
 					"prc_output": {
-						Resolved: &cm.ResolvedDataDisplayDescriptor{
-							Title:    "Permanent Resident Card",
-							Subtitle: "Permanent Resident Card",
-							Properties: map[string]interface{}{
-								"Card Holder's family name": "SMITH",
-								"Card Holder's first name":  "JOHN",
-							},
+						Title:       "Permanent Resident Card",
+						Subtitle:    "Permanent Resident Card",
+						Description: "PR card of John Smith.",
+						Properties: map[string]*cm.ResolvedProperty{
+							"Card Holder's family name": {Label: "Card Holder's family name", Value: "SMITH", Schema: cm.Schema{Type: "string"}},
+							"Card Holder's first name":  {Label: "Card Holder's first name", Value: "JOHN", Schema: cm.Schema{Type: "string"}},
 						},
 					},
 					"udc_output": {
-						Resolved: &cm.ResolvedDataDisplayDescriptor{
-							Title: "Bachelor's Degree",
-							Properties: map[string]interface{}{
-								"Degree":               "BachelorDegree",
-								"Degree Holder's name": "Jayden Doe",
-							},
+						Title:       "Bachelor's Degree",
+						Description: "Awarded for completing a four year program at Example University.",
+						Properties: map[string]*cm.ResolvedProperty{
+							"Degree":               {Label: "Degree", Value: "BachelorDegree", Schema: cm.Schema{Type: "string"}},
+							"Degree Holder's name": {Label: "Degree Holder's name", Value: "Jayden Doe", Schema: cm.Schema{Type: "string"}},
 						},
 					},
 				},
@@ -224,14 +244,15 @@ func TestResolveFulfillment(t *testing.T) {
 			"single descriptor and credentials for multi descriptor manifest": {
 				manifest:    credentialManifestMultipleVCs,
 				fulfillment: vpWithDriversLicenseVCAndCredentialFulfillment,
-				expected: map[string]*cm.ResolvedDescriptor{
+				expected: map[string]*match{
 					"driver_license_output": {
-						Resolved: &cm.ResolvedDataDisplayDescriptor{
-							Title:    "Washington State Driver License",
-							Subtitle: "Class A, Commercial",
-							Properties: map[string]interface{}{
-								"Driving License Number": "34DGE352",
-							},
+						Title:    "Washington State Driver License",
+						Subtitle: "Class A, Commercial",
+						Description: "License to operate a vehicle with a gross combined weight " +
+							"rating (GCWR) of 26,001 or more pounds, as long as the GVWR of the vehicle(s) " +
+							"being towed is over 10,000 pounds.",
+						Properties: map[string]*cm.ResolvedProperty{
+							"Driving License Number": {Label: "Driving License Number", Value: "34DGE352", Schema: cm.Schema{Type: "boolean"}},
 						},
 					},
 				},
@@ -251,18 +272,19 @@ func TestResolveFulfillment(t *testing.T) {
 				require.Len(t, results, len(testData.expected))
 
 				for _, r := range results {
-					require.NotNil(t, r.Resolved)
+					require.NotEmpty(t, r.DescriptorID)
 					expected, ok := testData.expected[r.DescriptorID]
 					require.True(t, ok, "unexpected descriptor ID '%s' in resolved properties", r.DescriptorID)
-					require.Equal(t, expected.Resolved.Title, r.Resolved.Title)
-					require.Equal(t, expected.Resolved.Subtitle, r.Resolved.Subtitle)
-					require.Equal(t, expected.Resolved.Description, r.Resolved.Description)
-					require.Len(t, r.Resolved.Properties, len(expected.Resolved.Properties))
+					require.Equal(t, expected.Title, r.Title)
+					require.Equal(t, expected.Subtitle, r.Subtitle)
+					require.Equal(t, expected.Description, r.Description)
+					require.NotEmpty(t, r.Styles.Background)
+					require.Len(t, r.Properties, len(expected.Properties))
 
-					for label, value := range r.Resolved.Properties {
-						expectedVal, ok := expected.Resolved.Properties[label]
-						require.True(t, ok, "expected to find '%s' label in resolved properties", label)
-						require.Equal(t, expectedVal, value)
+					for _, resolvedProperty := range r.Properties {
+						expectedVal, ok := expected.Properties[resolvedProperty.Label]
+						require.True(t, ok, "expected to find '%s' label in resolved properties", resolvedProperty.Label)
+						require.EqualValues(t, expectedVal, resolvedProperty)
 					}
 				}
 			})
@@ -475,31 +497,96 @@ func TestResolveFulfillment(t *testing.T) {
 }
 
 func TestResolveCredential(t *testing.T) {
-	t.Run("Successes", func(t *testing.T) {
+	t.Run("Successes - resolve credential instance", func(t *testing.T) {
 		manifest := &cm.CredentialManifest{}
 		require.NoError(t, manifest.UnmarshalJSON(credentialManifestUniversityDegree))
 
 		vc := parseTestCredential(t, validVC)
 
-		result, err := manifest.ResolveCredential("bachelors_degree", vc)
+		result, err := manifest.ResolveCredential("bachelors_degree", cm.CredentialToResolve(vc))
 		require.NoError(t, err)
 		require.NotEmpty(t, result)
 		require.Equal(t, result.Title, "Bachelor of Applied Science")
 		require.Equal(t, result.Subtitle, "Electrical Systems Specialty")
-		require.EqualValues(t, result.Properties, map[string]interface{}{
-			"With distinction": true,
-			"Years studied":    float64(4),
-		})
+
+		expected := map[string]*cm.ResolvedProperty{
+			"With distinction": {
+				Label: "With distinction",
+				Value: true,
+				Schema: cm.Schema{
+					Type: "boolean",
+				},
+			},
+			"Years studied": {
+				Label: "Years studied",
+				Value: float64(4),
+				Schema: cm.Schema{
+					Type: "number",
+				},
+			},
+		}
+
+		for _, property := range result.Properties {
+			expectedVal, ok := expected[property.Label]
+			require.True(t, ok, "unexpected label '%s' in resolved properties", property.Label)
+			require.EqualValues(t, expectedVal, property)
+		}
+	})
+
+	t.Run("Successes - resolve raw Credential", func(t *testing.T) {
+		manifest := &cm.CredentialManifest{}
+		require.NoError(t, manifest.UnmarshalJSON(credentialManifestUniversityDegree))
+
+		result, err := manifest.ResolveCredential("bachelors_degree", cm.RawCredentialToResolve(validVC))
+		require.NoError(t, err)
+		require.NotEmpty(t, result)
+		require.Equal(t, result.Title, "Bachelor of Applied Science")
+		require.Equal(t, result.Subtitle, "Electrical Systems Specialty")
+
+		expected := map[string]*cm.ResolvedProperty{
+			"With distinction": {
+				Label: "With distinction",
+				Value: true,
+				Schema: cm.Schema{
+					Type: "boolean",
+				},
+			},
+			"Years studied": {
+				Label: "Years studied",
+				Value: float64(4),
+				Schema: cm.Schema{
+					Type: "number",
+				},
+			},
+		}
+
+		for _, property := range result.Properties {
+			expectedVal, ok := expected[property.Label]
+			require.True(t, ok, "unexpected label '%s' in resolved properties", property.Label)
+			require.EqualValues(t, expectedVal, property)
+		}
 	})
 
 	t.Run("Failures", func(t *testing.T) {
 		manifest := &cm.CredentialManifest{}
 		require.NoError(t, manifest.UnmarshalJSON(credentialManifestUniversityDegree))
 
+		// invalid credential to resolve
+		result, err := manifest.ResolveCredential("bachelors_degree", nil)
+		require.Empty(t, result)
+		require.Error(t, err)
+		require.Contains(t, err.Error(), "credential to resolve is not provided")
+
+		// invalid raw credential to resolve
+		result, err = manifest.ResolveCredential("bachelors_degree", cm.RawCredentialToResolve([]byte("---")))
+		require.Empty(t, result)
+		require.Error(t, err)
+		require.Contains(t, err.Error(), "invalid character")
+
 		vc := parseTestCredential(t, validVC)
 
 		// descriptor not found
-		result, err := manifest.ResolveCredential("bachelors_degree_incorrect", vc)
+		result, err = manifest.ResolveCredential("bachelors_degree_incorrect", cm.CredentialToResolve(vc))
 		require.Empty(t, result)
 		require.Error(t, err)
 		require.Contains(t, err.Error(), "unable to find matching descriptor")
@@ -507,7 +594,7 @@ func TestResolveCredential(t *testing.T) {
 		// credential marshal error
 		vc.CustomFields["invalid"] = make(chan int)
 
-		result, err = manifest.ResolveCredential("bachelors_degree", vc)
+		result, err = manifest.ResolveCredential("bachelors_degree", cm.CredentialToResolve(vc))
 		require.Empty(t, result)
 		require.Error(t, err)
 		require.Contains(t, err.Error(), "JSON marshalling of verifiable credential")
@@ -617,6 +704,24 @@ func createCredentialManifestWithInvalidSchemaFormat(t *testing.T) cm.Credential
 	}
 
 	return credentialManifest
+}
+
+func createCredentialManifestWithMissingPropertyJSONPathAndText(t *testing.T) cm.CredentialManifest {
+	credentialManifest := makeCredentialManifestFromBytes(t, credentialManifestUniversityDegree)
+
+	credentialManifest.OutputDescriptors[0].Display.Properties[0].Paths = []string{}
+	credentialManifest.OutputDescriptors[0].Display.Properties[0].Text = ""
+
+	return credentialManifest
+}
+
+func createMarshalledCredentialManifestWithMissingPropertyJSONPathAndText(t *testing.T) []byte {
+	credentialManifest := createCredentialManifestWithMissingPropertyJSONPathAndText(t)
+
+	credentialManifestWithNoPathsOrType, err := json.Marshal(credentialManifest)
+	require.NoError(t, err)
+
+	return credentialManifestWithNoPathsOrType
 }
 
 func createCredentialManifestWithNilJWTFormat(t *testing.T) cm.CredentialManifest {

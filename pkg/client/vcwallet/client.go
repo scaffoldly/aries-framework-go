@@ -17,6 +17,7 @@ import (
 	"github.com/hyperledger/aries-framework-go/pkg/common/log"
 	"github.com/hyperledger/aries-framework-go/pkg/crypto"
 	"github.com/hyperledger/aries-framework-go/pkg/didcomm/common/service"
+	"github.com/hyperledger/aries-framework-go/pkg/doc/cm"
 	"github.com/hyperledger/aries-framework-go/pkg/doc/verifiable"
 	"github.com/hyperledger/aries-framework-go/pkg/framework/aries/api/vdr"
 	"github.com/hyperledger/aries-framework-go/pkg/kms"
@@ -61,8 +62,9 @@ var noAuth walletAuth = func() (string, error) { return "", ErrWalletLocked }
 
 // Client enable access to verifiable credential wallet features.
 type Client struct {
-	wallet *wallet.Wallet
-	auth   walletAuth
+	wallet  *wallet.Wallet
+	didComm *wallet.DidComm
+	auth    walletAuth
 }
 
 // New returns new verifiable credential wallet client for given user.
@@ -82,7 +84,12 @@ func New(userID string, ctx provider, options ...wallet.UnlockOptions) (*Client,
 		return nil, err
 	}
 
-	client := &Client{wallet: w, auth: noAuth}
+	didComm, err := wallet.NewDidComm(w, ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	client := &Client{wallet: w, didComm: didComm, auth: noAuth}
 
 	if len(options) > 0 {
 		if client.Close() {
@@ -369,7 +376,7 @@ func (c *Client) Connect(invitation *outofband.Invitation, options ...wallet.Con
 		return "", err
 	}
 
-	return c.wallet.Connect(auth, invitation, options...)
+	return c.didComm.Connect(auth, invitation, options...)
 }
 
 // ProposePresentation accepts out-of-band invitation and sends message proposing presentation
@@ -394,7 +401,7 @@ func (c *Client) ProposePresentation(invitation *wallet.GenericInvitation, optio
 		return nil, err
 	}
 
-	return c.wallet.ProposePresentation(auth, invitation, options...)
+	return c.didComm.ProposePresentation(auth, invitation, options...)
 }
 
 // PresentProof sends message present proof message from wallet to relying party.
@@ -417,7 +424,7 @@ func (c *Client) PresentProof(thID string, presentProofFrom ...wallet.ConcludeIn
 		return nil, err
 	}
 
-	return c.wallet.PresentProof(auth, thID, presentProofFrom...)
+	return c.didComm.PresentProof(auth, thID, presentProofFrom...)
 }
 
 // ProposeCredential sends propose credential message from wallet to issuer.
@@ -440,7 +447,7 @@ func (c *Client) ProposeCredential(invitation *wallet.GenericInvitation, options
 		return nil, err
 	}
 
-	return c.wallet.ProposeCredential(auth, invitation, options...)
+	return c.didComm.ProposeCredential(auth, invitation, options...)
 }
 
 // RequestCredential sends request credential message from wallet to issuer and
@@ -464,5 +471,26 @@ func (c *Client) RequestCredential(thID string, options ...wallet.ConcludeIntera
 		return nil, err
 	}
 
-	return c.wallet.RequestCredential(auth, thID, options...)
+	return c.didComm.RequestCredential(auth, thID, options...)
+}
+
+// ResolveCredentialManifest resolves given credential manifest by credential fulfillment or credential.
+// Supports: https://identity.foundation/credential-manifest/
+//
+// Args:
+// 		- authToken: authorization for performing operation.
+// 		- manifest: Credential manifest data model in raw format.
+// 		- resolve: options to provide credential fulfillment or credential to resolve.
+//
+// Returns:
+// 		- list of resolved descriptors.
+// 		- error if operation fails.
+//
+func (c *Client) ResolveCredentialManifest(manifest json.RawMessage, resolve wallet.ResolveManifestOption) ([]*cm.ResolvedDescriptor, error) { // nolint: lll
+	auth, err := c.auth()
+	if err != nil {
+		return nil, err
+	}
+
+	return c.wallet.ResolveCredentialManifest(auth, manifest, resolve)
 }

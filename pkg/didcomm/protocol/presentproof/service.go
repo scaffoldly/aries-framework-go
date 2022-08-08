@@ -565,7 +565,9 @@ func (s *Service) handle(md *metaData) error {
 }
 
 func getPIID(msg service.DIDCommMsg) (string, error) {
-	if pthID := msg.ParentThreadID(); pthID != "" {
+	// pthid is needed for problem-report message
+	pthID := msg.ParentThreadID()
+	if pthID != "" && (msg.Type() == ProblemReportMsgTypeV2 || msg.Type() == ProblemReportMsgTypeV3) {
 		return pthID, nil
 	}
 
@@ -668,6 +670,10 @@ func getVersion(t string) string {
 
 func redirectInfo(msg service.DIDCommMsgMap) map[string]interface{} {
 	if redirectInfo, ok := msg[webRedirect].(map[string]interface{}); ok {
+		return redirectInfo
+	}
+
+	if redirectInfo, ok := msg[webRedirectV2].(map[string]interface{}); ok {
 		return redirectInfo
 	}
 

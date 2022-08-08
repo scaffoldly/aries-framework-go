@@ -20,6 +20,7 @@ import (
 	"github.com/hyperledger/aries-framework-go/pkg/didcomm/common/model"
 	"github.com/hyperledger/aries-framework-go/pkg/didcomm/common/service"
 	"github.com/hyperledger/aries-framework-go/pkg/didcomm/protocol/messagepickup"
+	"github.com/hyperledger/aries-framework-go/pkg/didcomm/transport"
 	"github.com/hyperledger/aries-framework-go/pkg/doc/did"
 	vdrapi "github.com/hyperledger/aries-framework-go/pkg/framework/aries/api/vdr"
 	mockdispatcher "github.com/hyperledger/aries-framework-go/pkg/mock/didcomm/dispatcher"
@@ -312,6 +313,7 @@ func TestServiceRequestMsg(t *testing.T) {
 					return nil
 				},
 			},
+			MediaTypeProfilesValue: []string{transport.MediaTypeAIP2RFC0019Profile},
 		})
 		require.NoError(t, err)
 
@@ -338,6 +340,7 @@ func TestServiceRequestMsg(t *testing.T) {
 				CrAndExportPubKeyErr: expected,
 			},
 			OutboundDispatcherValue: &mockdispatcher.MockOutbound{},
+			MediaTypeProfilesValue:  []string{"value"},
 		})
 		require.NoError(t, err)
 
@@ -401,6 +404,7 @@ func TestEvents(t *testing.T) {
 					return nil
 				},
 			},
+			MediaTypeProfilesValue: []string{transport.MediaTypeAIP2RFC0019Profile},
 		})
 		require.NoError(t, err)
 
@@ -511,6 +515,7 @@ func TestEvents(t *testing.T) {
 					return nil
 				},
 			},
+			MediaTypeProfilesValue: []string{transport.MediaTypeAIP2RFC0019Profile},
 		})
 		require.NoError(t, err)
 
@@ -835,7 +840,7 @@ func TestServiceForwardMsg(t *testing.T) {
 					if didID == invalidDID {
 						return nil, errors.New("invalid")
 					}
-					return &did.DocResolution{DIDDocument: mockdiddoc.GetMockDIDDoc(t)}, nil
+					return &did.DocResolution{DIDDocument: mockdiddoc.GetMockDIDDoc(t, false)}, nil
 				},
 			},
 		})
@@ -888,7 +893,7 @@ func TestMessagePickup(t *testing.T) {
 				},
 				VDRegistryValue: &mockvdr.MockVDRegistry{
 					ResolveFunc: func(didID string, opts ...vdrapi.DIDMethodOption) (*did.DocResolution, error) {
-						return &did.DocResolution{DIDDocument: mockdiddoc.GetMockDIDDoc(t)}, nil
+						return &did.DocResolution{DIDDocument: mockdiddoc.GetMockDIDDoc(t, false)}, nil
 					},
 				},
 			})
@@ -931,7 +936,7 @@ func TestMessagePickup(t *testing.T) {
 			},
 			VDRegistryValue: &mockvdr.MockVDRegistry{
 				ResolveFunc: func(didID string, opts ...vdrapi.DIDMethodOption) (doc *did.DocResolution, e error) {
-					return &did.DocResolution{DIDDocument: mockdiddoc.GetMockDIDDoc(t)}, nil
+					return &did.DocResolution{DIDDocument: mockdiddoc.GetMockDIDDoc(t, false)}, nil
 				},
 			},
 		})

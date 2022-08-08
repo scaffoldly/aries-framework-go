@@ -40,6 +40,7 @@ const (
 	codeInternalError = "internal"
 	codeRejectedError = "rejected"
 	webRedirect       = "~web-redirect"
+	webRedirectV2     = "web_redirect"
 )
 
 // state action for network call.

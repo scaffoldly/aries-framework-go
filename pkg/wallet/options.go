@@ -272,12 +272,22 @@ type AddContentOptions func(opts *addContentOpts)
 type addContentOpts struct {
 	// ID of the collection to which the content belongs.
 	collectionID string
+
+	// indicated if the model of data saved into the wallet should be validated.
+	validateDataModel bool
 }
 
 // AddByCollection option for grouping wallet contents by collection ID.
 func AddByCollection(collectionID string) AddContentOptions {
 	return func(opts *addContentOpts) {
 		opts.collectionID = collectionID
+	}
+}
+
+// ValidateContent enables data model validations of adding content.
+func ValidateContent() AddContentOptions {
+	return func(opts *addContentOpts) {
+		opts.validateDataModel = true
 	}
 }
 
@@ -438,5 +448,56 @@ func WaitForDone(timeout time.Duration) ConcludeInteractionOptions {
 		} else {
 			opts.timeout = timeout
 		}
+	}
+}
+
+// resolveManifestOpts contains option to resolve credential manifest.
+type resolveManifestOpts struct {
+	fulfillment    *verifiable.Presentation
+	rawFulfillment json.RawMessage
+	descriptorID   string
+	credentialID   string
+	credential     *verifiable.Credential
+	rawCredential  json.RawMessage
+}
+
+// ResolveManifestOption is option to resolve credential manifests.
+type ResolveManifestOption func(opts *resolveManifestOpts)
+
+// ResolveFulfillment options for resolving credential fulfillment presentation.
+func ResolveFulfillment(fulfillment *verifiable.Presentation) ResolveManifestOption {
+	return func(opts *resolveManifestOpts) {
+		opts.fulfillment = fulfillment
+	}
+}
+
+// ResolveRawFulfillment options for resolving raw bytes of credential fulfillment presentation.
+func ResolveRawFulfillment(fulfillment json.RawMessage) ResolveManifestOption {
+	return func(opts *resolveManifestOpts) {
+		opts.rawFulfillment = fulfillment
+	}
+}
+
+// ResolveCredential options for resolving credential by given descriptor ID.
+func ResolveCredential(descriptorID string, credential *verifiable.Credential) ResolveManifestOption {
+	return func(opts *resolveManifestOpts) {
+		opts.descriptorID = descriptorID
+		opts.credential = credential
+	}
+}
+
+// ResolveRawCredential options for resolving raw bytes of credential by given descriptor ID.
+func ResolveRawCredential(descriptorID string, rawCredential json.RawMessage) ResolveManifestOption {
+	return func(opts *resolveManifestOpts) {
+		opts.descriptorID = descriptorID
+		opts.rawCredential = rawCredential
+	}
+}
+
+// ResolveCredentialID options for resolving credential from wallet content store by given descriptor ID.
+func ResolveCredentialID(descriptorID, credentialID string) ResolveManifestOption {
+	return func(opts *resolveManifestOpts) {
+		opts.descriptorID = descriptorID
+		opts.credentialID = credentialID
 	}
 }

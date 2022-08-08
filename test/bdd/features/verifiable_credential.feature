@@ -4,7 +4,6 @@
 # SPDX-License-Identifier: Apache-2.0
 #
 
-@all
 @verifiable
 Feature: Issue Verifiable Credential
   @issue_vc_ldp_ed25519signature2018
@@ -36,3 +35,18 @@ Feature: Issue Verifiable Credential
   Scenario: Issue University Degree Credential with JWS proof
     When "Berkley" issues credential at "2019-03-15" regarding "Master Degree" to "Bob" with "Ed25519 JWS" proof
     Then "Bob" receives the credential and verifies it
+
+@interop_jwt_verifiable
+  Scenario: Load and verify Interop JWT credentials
+    When loading file "interop_credential_1_ed25519.jwt" signed using "Ed25519" and verify it
+    And  loading file "interop_credential_2_ed25519.jwt" signed using "Ed25519" and verify it
+    And  loading file "interop_credential_3_ed25519.jwt" signed using "Ed25519" and verify it
+    And  loading file "interop_credential_4_secp256k1.jwt" signed using "secp256k1" and verify it
+    And  loading file "interop_credential_5_secp256k1.jwt" signed using "secp256k1" and verify it
+    And  loading file "interop_credential_6_secp256k1.jwt" signed using "secp256k1" and verify it
+    And  loading file "interop_credential_7_secp256r1.jwt" signed using "secp256r1" and verify it
+    And  loading file "interop_credential_8_secp256r1.jwt" signed using "secp256r1" and verify it
+    And  loading file "interop_credential_9_secp256r1.jwt" signed using "secp256r1" and verify it
+    And  loading file "interop_credential_10_secp384r1.jwt" signed using "secp384r1" and verify it
+    And  loading file "interop_credential_11_secp384r1.jwt" signed using "secp384r1" and verify it
+    And  loading file "interop_credential_12_secp384r1.jwt" signed using "secp384r1" and verify it

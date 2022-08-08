@@ -12,13 +12,21 @@ import (
 	"fmt"
 
 	"github.com/google/uuid"
+	"github.com/piprate/json-gold/ld"
 
 	"github.com/hyperledger/aries-framework-go/pkg/doc/presexch"
 	"github.com/hyperledger/aries-framework-go/pkg/doc/verifiable"
 )
 
 const (
-	credentialApplicationPresentationContext = "https://identity.foundation/credential-manifest/application/v1"
+	// CredentialApplicationAttachmentFormat defines the format type of Credential Application when used as an
+	// attachment in the WACI issuance flow.
+	// Refer to https://identity.foundation/waci-presentation-exchange/#issuance-2 for more info.
+	CredentialApplicationAttachmentFormat = "dif/credential-manifest/application@v1.0"
+	// CredentialApplicationPresentationContext defines the context type of Credential Application when used as part of
+	// a presentation attachment in the WACI issuance flow.
+	// Refer to https://identity.foundation/waci-presentation-exchange/#issuance-2 for more info.
+	CredentialApplicationPresentationContext = "https://identity.foundation/credential-manifest/application/v1"
 	credentialApplicationPresentationType    = "CredentialApplication"
 )
 
@@ -61,6 +69,53 @@ func UnmarshalAndValidateAgainstCredentialManifest(credentialApplicationBytes []
 	return credentialApplication, nil
 }
 
+// ValidateCredentialApplication validates credential application presentation by validating
+// the embedded Credential Application object against the given Credential Manifest.
+// There are 3 requirements for the Credential Application to be valid against the Credential Manifest:
+// 1. Credential Application's manifest ID must match the Credential Manifest's ID.
+// 2. If the Credential Manifest has a format property, the Credential Application must also have a
+//    format property which is a subset of the Credential Manifest's.
+// 3. If the Credential Manifest contains a presentation_definition property, the Credential Application
+//    must have a matching presentation_submission property.
+// Proof of all individual credentials can also be validated by using options.
+// Refer to https://identity.foundation/credential-manifest/#credential-application for more info.
+func ValidateCredentialApplication(application *verifiable.Presentation, cm *CredentialManifest,
+	contextLoader ld.DocumentLoader, options ...presexch.MatchOption) error {
+	// The credential application object is embedded into the application presentation in which
+	// this function is validating.
+	credentialApplicationMap, ok := lookUpMap(application.CustomFields, "credential_application")
+	if !ok {
+		return errors.New("invalid credential application, missing 'credential_application'")
+	}
+
+	var ca CredentialApplication
+
+	caBits, err := json.Marshal(credentialApplicationMap)
+	if err != nil {
+		return fmt.Errorf("failed to marshal credential application: %w", err)
+	}
+
+	err = json.Unmarshal(caBits, &ca)
+	if err != nil {
+		return fmt.Errorf("failed to unmarshal credential application: %w", err)
+	}
+
+	err = ca.ValidateAgainstCredentialManifest(cm)
+	if err != nil {
+		return fmt.Errorf("credential application does not match credential manifest: %w", err)
+	}
+
+	// Credential Application must have a matching presentation submission if the related credential manifest has
+	// a presentation definition.
+	if cm.PresentationDefinition == nil {
+		return nil
+	}
+
+	_, err = cm.PresentationDefinition.Match(application, contextLoader, options...)
+
+	return err
+}
+
 // UnmarshalJSON is the custom unmarshal function gets called automatically when the standard json.Unmarshal is called.
 // It also ensures that the given data is a valid CredentialApplication object per the specification.
 func (ca *CredentialApplication) UnmarshalJSON(data []byte) error {
@@ -85,11 +140,9 @@ func (ca *CredentialApplication) ValidateAgainstCredentialManifest(cm *Credentia
 			"Credential Manifest's ID (%s)", ca.ManifestID, cm.ID)
 	}
 
-	if cm.hasFormat() {
-		err := ca.validateFormatAgainstCredManifestFormat(cm.Format)
-		if err != nil {
-			return fmt.Errorf("invalid format for the given Credential Manifest: %w", err)
-		}
+	err := ca.validateFormatAgainstCredManifestFormat(cm)
+	if err != nil {
+		return fmt.Errorf("invalid format for the given Credential Manifest: %w", err)
 	}
 
 	return nil
@@ -120,12 +173,21 @@ func (ca *CredentialApplication) validate() error {
 	return nil
 }
 
-func (ca *CredentialApplication) validateFormatAgainstCredManifestFormat(credManifestFormat presexch.Format) error {
+func (ca *CredentialApplication) validateFormatAgainstCredManifestFormat(cm *CredentialManifest) error {
+	// Credential Application's format must be a subset of the related Credential Manifest's format
+	if !ca.hasFormat() && !cm.hasFormat() {
+		return nil
+	}
+
+	if !cm.hasFormat() {
+		return errors.New("the Credential Application specifies a format but the Credential Manifest does not")
+	}
+
 	if !ca.hasFormat() {
 		return errors.New("the Credential Manifest specifies a format but the Credential Application does not")
 	}
 
-	err := ca.ensureFormatIsSubsetOfCredManifestFormat(credManifestFormat)
+	err := ca.ensureFormatIsSubsetOfCredManifestFormat(cm.Format)
 	if err != nil {
 		return fmt.Errorf("invalid format request: %w", err)
 	}
@@ -202,9 +264,9 @@ func WithExistingPresentationForPresentCredentialApplication(
 // 2. The format for the Credential Application object will be set to match the format from the Credential Manifest
 //    exactly. If a caller wants to use a smaller subset of the Credential Manifest's format, then they will have to
 //    set it manually.
-// 2. The location of the Verifiable Credentials is assumed to be an array at the root under a field called
+// 3. The location of the Verifiable Credentials is assumed to be an array at the root under a field called
 //    "verifiableCredential".
-// 3. The Verifiable Credentials in the presentation is assumed to be in the same order as the Output Descriptors in
+// 4. The Verifiable Credentials in the presentation is assumed to be in the same order as the Output Descriptors in
 //    the Credential Manifest.
 func PresentCredentialApplication(credentialManifest *CredentialManifest,
 	opts ...PresentCredentialApplicationOpt) (*verifiable.Presentation, error) {
@@ -253,7 +315,7 @@ func setCredentialApplicationContext(presentation *verifiable.Presentation) {
 
 	for i := range presentation.Context {
 		if presentation.Context[i] == presexch.PresentationSubmissionJSONLDContextIRI {
-			presentation.Context[i] = credentialApplicationPresentationContext
+			presentation.Context[i] = CredentialApplicationPresentationContext
 			newContextSet = true
 
 			break
@@ -261,7 +323,7 @@ func setCredentialApplicationContext(presentation *verifiable.Presentation) {
 	}
 
 	if !newContextSet {
-		presentation.Context = append(presentation.Context, credentialApplicationPresentationContext)
+		presentation.Context = append(presentation.Context, CredentialApplicationPresentationContext)
 	}
 }
 

@@ -225,8 +225,9 @@ func TestSignVerify(t *testing.T) {
 				kid2, kh2, err2 := k.ImportPrivateKey(priv, testCase.keyType)
 				require.NoError(t, err2)
 
-				pub, err2 := k.ExportPubKeyBytes(kid2)
+				pub, kt, err2 := k.ExportPubKeyBytes(kid2)
 				require.NoError(t, err2)
+				require.Equal(t, testCase.keyType, kt)
 
 				data := mockAttachmentData()
 
@@ -374,7 +375,7 @@ func TestSignVerify(t *testing.T) {
 
 		err = data.Verify(c, k)
 		require.Error(t, err)
-		require.Contains(t, err.Error(), "getting KeyType for jwk")
+		require.Contains(t, err.Error(), "invalid key type")
 	})
 
 	validProtectedHeader := `{

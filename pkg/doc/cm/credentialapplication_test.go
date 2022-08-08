@@ -15,7 +15,9 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/hyperledger/aries-framework-go/pkg/doc/cm"
+	"github.com/hyperledger/aries-framework-go/pkg/doc/presexch"
 	"github.com/hyperledger/aries-framework-go/pkg/doc/verifiable"
+	"github.com/hyperledger/aries-framework-go/pkg/internal/ldtestutil"
 )
 
 const unknownFormatName = "SomeUnknownFormat"
@@ -60,6 +62,10 @@ var (
 	vpWithPRCardVCUsingPresentationExchangeContext []byte //nolint:gochecknoglobals
 )
 
+// Sample Credential Application attachment.
+//go:embed testdata/credential_application_presentation_drivers_license.json
+var credentialApplicationDriversLicenseVP []byte //nolint:gochecknoglobals
+
 func TestUnmarshalAndValidateAgainstCredentialManifest(t *testing.T) {
 	t.Run("Success", func(t *testing.T) {
 		credentialManifest := makeCredentialManifestFromBytes(t, credentialManifestUniversityDegree)
@@ -76,6 +82,67 @@ func TestUnmarshalAndValidateAgainstCredentialManifest(t *testing.T) {
 			credentialApplicationUniversityDegree, &credentialManifest)
 		require.EqualError(t, err, "invalid format for the given Credential Manifest: the Credential "+
 			"Manifest specifies a format but the Credential Application does not")
+	})
+}
+
+func TestValidateCredentialApplication(t *testing.T) {
+	loader, err := ldtestutil.DocumentLoader()
+	require.NoError(t, err)
+
+	t.Run("Success", func(t *testing.T) {
+		manifest := makeCredentialManifestFromBytes(t,
+			credentialManifestDriversLicenseWithPresentationDefinitionAndFormat)
+
+		application, err := verifiable.ParsePresentation(credentialApplicationDriversLicenseVP,
+			verifiable.WithPresDisabledProofCheck(),
+			verifiable.WithPresJSONLDDocumentLoader(loader))
+		require.NoError(t, err)
+		require.NotEmpty(t, application)
+
+		err = cm.ValidateCredentialApplication(application, &manifest, loader,
+			presexch.WithCredentialOptions(verifiable.WithJSONLDDocumentLoader(loader),
+				verifiable.WithDisabledProofCheck()))
+		require.NoError(t, err)
+
+		manifest.PresentationDefinition = nil
+		err = cm.ValidateCredentialApplication(application, &manifest, loader,
+			presexch.WithCredentialOptions(verifiable.WithJSONLDDocumentLoader(loader),
+				verifiable.WithDisabledProofCheck()))
+		require.NoError(t, err)
+	})
+
+	t.Run("failures", func(t *testing.T) {
+		manifest := makeCredentialManifestFromBytes(t,
+			credentialManifestDriversLicenseWithPresentationDefinitionAndFormat)
+
+		application, err := verifiable.ParsePresentation(credentialApplicationDriversLicenseVP,
+			verifiable.WithPresDisabledProofCheck(),
+			verifiable.WithPresJSONLDDocumentLoader(loader))
+		require.NoError(t, err)
+		require.NotEmpty(t, application)
+
+		// manifest format not matching.
+		manifestWithNoFormat := makeCredentialManifestFromBytes(t, credentialManifestDriversLicenseWithPresentationDefinition)
+		err = cm.ValidateCredentialApplication(application, &manifestWithNoFormat, loader,
+			presexch.WithCredentialOptions(verifiable.WithJSONLDDocumentLoader(loader),
+				verifiable.WithDisabledProofCheck()))
+		require.Contains(t, err.Error(), "invalid format for the given Credential Manifest")
+
+		// manifest ID not matching.
+		manifest.ID = "invalid"
+		err = cm.ValidateCredentialApplication(application, &manifest, loader,
+			presexch.WithCredentialOptions(verifiable.WithJSONLDDocumentLoader(loader),
+				verifiable.WithDisabledProofCheck()))
+		require.Contains(t, err.Error(), "the Manifest ID of the Credential Application "+
+			"(dcc75a16-19f5-4273-84ce-4da69ee2b7fe) does not match the given Credential Manifest's "+
+			"ID (invalid)")
+
+		// missing credential application info.
+		delete(application.CustomFields, "credential_application")
+		err = cm.ValidateCredentialApplication(application, &manifest, loader,
+			presexch.WithCredentialOptions(verifiable.WithJSONLDDocumentLoader(loader),
+				verifiable.WithDisabledProofCheck()))
+		require.Contains(t, err.Error(), "invalid credential application, missing 'credential_application'")
 	})
 }
 
@@ -216,6 +283,17 @@ func TestCredentialApplication_ValidateAgainstCredentialManifest(t *testing.T) {
 
 			err := credentialApplication.ValidateAgainstCredentialManifest(&credentialManifest)
 			require.NoError(t, err)
+		})
+	})
+	t.Run("Credential Manifest has no format", func(t *testing.T) {
+		t.Run("Credential Application has a format", func(t *testing.T) {
+			credentialApplication := makeCredentialApplicationFromBytes(t, credentialApplicationUniversityDegreeWithFormat)
+
+			credentialManifest := makeCredentialManifestFromBytes(t, credentialManifestUniversityDegree)
+			require.Empty(t, credentialManifest.Format)
+			err := credentialApplication.ValidateAgainstCredentialManifest(&credentialManifest)
+			require.EqualError(t, err, "invalid format for the given Credential Manifest: the Credential Application "+
+				"specifies a format but the Credential Manifest does not")
 		})
 	})
 	t.Run("Credential App's manifest ID does not match the given Credential Manifest", func(t *testing.T) {
