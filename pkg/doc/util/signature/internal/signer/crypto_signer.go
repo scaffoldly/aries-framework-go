@@ -48,6 +48,26 @@ func (s *CryptoSigner) PublicKeyBytes() []byte {
 	return s.PubKeyBytes
 }
 
+// Alg returns alg.
+func (s *CryptoSigner) Alg() string {
+	switch pubKey := s.PubKey.(type) {
+	case
+		*ecdsa.PublicKey:
+		switch pubKey.Curve {
+		case elliptic.P256():
+			return p256Alg
+		case elliptic.P384():
+			return p384Alg
+		case elliptic.P521():
+			return p521Alg
+		}
+	case ed25519.PublicKey:
+		return alg
+	}
+
+	return ""
+}
+
 // NewCryptoSigner creates a new CryptoSigner.
 func NewCryptoSigner(crypto cryptoapi.Crypto, kms kmsapi.KeyManager, keyType kmsapi.KeyType) (*CryptoSigner, error) {
 	kid, kh, err := kms.Create(keyType)

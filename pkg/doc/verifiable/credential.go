@@ -456,11 +456,6 @@ type Subject struct {
 
 // MarshalJSON marshals Subject to JSON.
 func (s *Subject) MarshalJSON() ([]byte, error) {
-	if len(s.CustomFields) == 0 {
-		// Subject ID as string
-		return json.Marshal(s.ID)
-	}
-
 	type Alias Subject
 
 	alias := Alias(*s)
@@ -514,6 +509,7 @@ type Credential struct {
 	Evidence       Evidence
 	TermsOfUse     []TypedID
 	RefreshService []TypedID
+	JWT            string
 
 	CustomFields CustomFields
 }
@@ -533,6 +529,7 @@ type rawCredential struct {
 	Evidence       Evidence          `json:"evidence,omitempty"`
 	TermsOfUse     json.RawMessage   `json:"termsOfUse,omitempty"`
 	RefreshService json.RawMessage   `json:"refreshService,omitempty"`
+	JWT            string            `json:"jwt,omitempty"`
 
 	// All unmapped fields are put here.
 	CustomFields `json:"-"`
@@ -730,7 +727,7 @@ func parseIssuer(issuerBytes json.RawMessage) (Issuer, error) {
 // parseSubject parses raw credential subject.
 //
 // Subject can be defined as a string (subject ID) or single object or array of objects.
-func parseSubject(subjectBytes json.RawMessage) ([]Subject, error) {
+func parseSubject(subjectBytes json.RawMessage) (interface{}, error) {
 	if len(subjectBytes) == 0 {
 		return nil, nil
 	}
@@ -739,10 +736,7 @@ func parseSubject(subjectBytes json.RawMessage) ([]Subject, error) {
 
 	err := json.Unmarshal(subjectBytes, &subjectID)
 	if err == nil {
-		return []Subject{{
-			ID:           subjectID,
-			CustomFields: make(CustomFields),
-		}}, nil
+		return subjectID, nil
 	}
 
 	var subject Subject
@@ -802,11 +796,10 @@ func ParseCredential(vcData []byte, opts ...CredentialOpt) (*Credential, error) 
 	vcOpts := getCredentialOpts(opts)
 
 	// Decode credential (e.g. from JWT).
-	vcDataDecoded, err := decodeRaw(vcData, vcOpts)
+	vcDataDecoded, externalJWT, err := decodeRaw(vcData, vcOpts)
 	if err != nil {
 		return nil, fmt.Errorf("decode new credential: %w", err)
 	}
-
 	// Unmarshal raw credential from JSON.
 	var raw rawCredential
 
@@ -825,6 +818,8 @@ func ParseCredential(vcData []byte, opts ...CredentialOpt) (*Credential, error) 
 	if err != nil {
 		return nil, err
 	}
+
+	vc.JWT = externalJWT
 
 	return vc, nil
 }
@@ -996,6 +991,7 @@ func newCredential(raw *rawCredential) (*Credential, error) {
 		Evidence:       raw.Evidence,
 		TermsOfUse:     termsOfUse,
 		RefreshService: refreshService,
+		JWT:            raw.JWT,
 		CustomFields:   raw.CustomFields,
 	}, nil
 }
@@ -1022,33 +1018,62 @@ func parseTypedID(bytes json.RawMessage) ([]TypedID, error) {
 	return nil, err
 }
 
-func decodeRaw(vcData []byte, vcOpts *credentialOpts) ([]byte, error) {
-	vcStr := string(vcData)
+type externalJWTVC struct {
+	JWT string `json:"jwt,omitempty"`
+}
 
-	if jwt.IsJWS(vcStr) { // External proof, is checked by JWS.
+func unQuote(s []byte) []byte {
+	if len(s) <= 1 {
+		return s
+	}
+
+	if s[0] == '"' && s[len(s)-1] == '"' {
+		return s[1 : len(s)-1]
+	}
+
+	return s
+}
+
+func decodeRaw(vcData []byte, vcOpts *credentialOpts) ([]byte, string, error) {
+	vcStr := string(unQuote(vcData))
+	externalVCStr := vcStr
+
+	jwtHolder := &externalJWTVC{}
+	e := json.Unmarshal(vcData, jwtHolder)
+
+	hasJWT := e == nil && jwtHolder.JWT != ""
+	if hasJWT {
+		externalVCStr = jwtHolder.JWT
+	}
+
+	if jwt.IsJWS(externalVCStr) { // External proof, is checked by JWS.
 		if vcOpts.publicKeyFetcher == nil && !vcOpts.disabledProofCheck {
-			return nil, errors.New("public key fetcher is not defined")
+			return nil, "", errors.New("public key fetcher is not defined")
 		}
 
-		vcDecodedBytes, err := decodeCredJWS(vcStr, !vcOpts.disabledProofCheck, vcOpts.publicKeyFetcher)
+		vcDecodedBytes, err := decodeCredJWS(externalVCStr, !vcOpts.disabledProofCheck, vcOpts.publicKeyFetcher)
 		if err != nil {
-			return nil, fmt.Errorf("JWS decoding: %w", err)
+			return nil, "", fmt.Errorf("JWS decoding: %w", err)
 		}
 
-		return vcDecodedBytes, nil
+		return vcDecodedBytes, externalVCStr, nil
 	}
 
 	if jwt.IsJWTUnsecured(vcStr) { // Embedded proof.
 		vcDecodedBytes, err := decodeCredJWTUnsecured(vcStr)
 		if err != nil {
-			return nil, fmt.Errorf("unsecured JWT decoding: %w", err)
+			return nil, "", fmt.Errorf("unsecured JWT decoding: %w", err)
 		}
 
-		return checkEmbeddedProof(vcDecodedBytes, getEmbeddedProofCheckOpts(vcOpts))
+		vc, err := checkEmbeddedProof(vcDecodedBytes, getEmbeddedProofCheckOpts(vcOpts))
+
+		return vc, "", err
 	}
 
 	// Embedded proof.
-	return checkEmbeddedProof(vcData, getEmbeddedProofCheckOpts(vcOpts))
+	vc, e := checkEmbeddedProof(vcData, getEmbeddedProofCheckOpts(vcOpts))
+
+	return vc, "", e
 }
 
 func getEmbeddedProofCheckOpts(vcOpts *credentialOpts) *embeddedProofCheckOpts {
@@ -1441,6 +1466,7 @@ func (vc *Credential) raw() (*rawCredential, error) {
 		TermsOfUse:     rawTermsOfUse,
 		Issued:         vc.Issued,
 		Expired:        vc.Expired,
+		JWT:            vc.JWT,
 		CustomFields:   vc.CustomFields,
 	}
 
@@ -1485,6 +1511,12 @@ func typedIDsToRaw(typedIDs []TypedID) ([]byte, error) {
 
 // MarshalJSON converts Verifiable Credential to JSON bytes.
 func (vc *Credential) MarshalJSON() ([]byte, error) {
+	if vc.JWT != "" {
+		// If vc.JWT exists, marshal only the JWT, since all other values should be unchanged
+		// from when the JWT was parsed.
+		return []byte("\"" + vc.JWT + "\""), nil
+	}
+
 	raw, err := vc.raw()
 	if err != nil {
 		return nil, fmt.Errorf("JSON marshalling of verifiable credential: %w", err)

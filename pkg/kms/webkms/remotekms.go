@@ -60,6 +60,7 @@ type createKeyStoreResp struct {
 
 type createKeyReq struct {
 	KeyType kms.KeyType `json:"key_type"`
+	Attrs   []string    `json:"attrs,omitempty"`
 }
 
 type createKeyResp struct {
@@ -261,10 +262,10 @@ func (r *RemoteKMS) doHTTPRequest(method, destination string, mReq []byte) (*htt
 //  - KeyID raw ID of the handle
 //  - handle instance representing a remote keystore URL including KeyID
 //  - error if failure
-func (r *RemoteKMS) Create(kt kms.KeyType) (string, interface{}, error) {
+func (r *RemoteKMS) Create(kt kms.KeyType, opts ...kms.KeyOpts) (string, interface{}, error) {
 	startCreate := time.Now()
 
-	keyURL, _, err := r.createKey(kt)
+	keyURL, _, err := r.createKey(kt, opts...)
 	if err != nil {
 		return "", nil, err
 	}
@@ -276,11 +277,18 @@ func (r *RemoteKMS) Create(kt kms.KeyType) (string, interface{}, error) {
 	return kid, keyURL, nil
 }
 
-func (r *RemoteKMS) createKey(kt kms.KeyType) (string, []byte, error) {
+func (r *RemoteKMS) createKey(kt kms.KeyType, opts ...kms.KeyOpts) (string, []byte, error) {
 	destination := r.keystoreURL + "/keys"
+
+	keyOpts := kms.NewKeyOpt()
+
+	for _, opt := range opts {
+		opt(keyOpts)
+	}
 
 	httpReqJSON := &createKeyReq{
 		KeyType: kt,
+		Attrs:   keyOpts.Attrs(),
 	}
 
 	marshaledReq, err := r.marshalFunc(httpReqJSON)
@@ -346,7 +354,7 @@ func (r *RemoteKMS) buildKIDURL(keyID string) string {
 //  - new KeyID
 //  - handle instance (to private key)
 //  - error if failure
-func (r *RemoteKMS) Rotate(kt kms.KeyType, keyID string) (string, interface{}, error) {
+func (r *RemoteKMS) Rotate(kt kms.KeyType, keyID string, opts ...kms.KeyOpts) (string, interface{}, error) {
 	return "", nil, errors.New("function Rotate is not implemented in remoteKMS")
 }
 
@@ -387,10 +395,10 @@ func (r *RemoteKMS) ExportPubKeyBytes(keyID string) ([]byte, kms.KeyType, error)
 //  - KeyID of the new handle created.
 //  - marshalled public key []byte
 //  - error if it fails to export the public key bytes
-func (r *RemoteKMS) CreateAndExportPubKeyBytes(kt kms.KeyType) (string, []byte, error) {
+func (r *RemoteKMS) CreateAndExportPubKeyBytes(kt kms.KeyType, opts ...kms.KeyOpts) (string, []byte, error) {
 	start := time.Now()
 
-	keyURL, keyBytes, err := r.createKey(kt)
+	keyURL, keyBytes, err := r.createKey(kt, opts...)
 	if err != nil {
 		return "", nil, err
 	}
@@ -403,7 +411,7 @@ func (r *RemoteKMS) CreateAndExportPubKeyBytes(kt kms.KeyType) (string, []byte, 
 }
 
 // PubKeyBytesToHandle is not implemented in remoteKMS.
-func (r *RemoteKMS) PubKeyBytesToHandle(pubKey []byte, kt kms.KeyType) (interface{}, error) {
+func (r *RemoteKMS) PubKeyBytesToHandle(pubKey []byte, kt kms.KeyType, opts ...kms.KeyOpts) (interface{}, error) {
 	return nil, errors.New("function PubKeyBytesToHandle is not implemented in remoteKMS")
 }
 

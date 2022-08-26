@@ -10,7 +10,6 @@ import (
 	gomock "github.com/golang/mock/gomock"
 	kms "github.com/hyperledger/aries-framework-go/pkg/kms"
 	secretlock "github.com/hyperledger/aries-framework-go/pkg/secretlock"
-	storage "github.com/hyperledger/aries-framework-go/spi/storage"
 )
 
 // MockProvider is a mock of Provider interface.
@@ -51,10 +50,10 @@ func (mr *MockProviderMockRecorder) SecretLock() *gomock.Call {
 }
 
 // StorageProvider mocks base method.
-func (m *MockProvider) StorageProvider() storage.Provider {
+func (m *MockProvider) StorageProvider() kms.Store {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "StorageProvider")
-	ret0, _ := ret[0].(storage.Provider)
+	ret0, _ := ret[0].(kms.Store)
 	return ret0
 }
 
@@ -88,9 +87,13 @@ func (m *MockKeyManager) EXPECT() *MockKeyManagerMockRecorder {
 }
 
 // Create mocks base method.
-func (m *MockKeyManager) Create(arg0 kms.KeyType) (string, interface{}, error) {
+func (m *MockKeyManager) Create(arg0 kms.KeyType, arg1 ...kms.KeyOpts) (string, interface{}, error) {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "Create", arg0)
+	varargs := []interface{}{arg0}
+	for _, a := range arg1 {
+		varargs = append(varargs, a)
+	}
+	ret := m.ctrl.Call(m, "Create", varargs...)
 	ret0, _ := ret[0].(string)
 	ret1, _ := ret[1].(interface{})
 	ret2, _ := ret[2].(error)
@@ -98,15 +101,20 @@ func (m *MockKeyManager) Create(arg0 kms.KeyType) (string, interface{}, error) {
 }
 
 // Create indicates an expected call of Create.
-func (mr *MockKeyManagerMockRecorder) Create(arg0 interface{}) *gomock.Call {
+func (mr *MockKeyManagerMockRecorder) Create(arg0 interface{}, arg1 ...interface{}) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Create", reflect.TypeOf((*MockKeyManager)(nil).Create), arg0)
+	varargs := append([]interface{}{arg0}, arg1...)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Create", reflect.TypeOf((*MockKeyManager)(nil).Create), varargs...)
 }
 
 // CreateAndExportPubKeyBytes mocks base method.
-func (m *MockKeyManager) CreateAndExportPubKeyBytes(arg0 kms.KeyType) (string, []byte, error) {
+func (m *MockKeyManager) CreateAndExportPubKeyBytes(arg0 kms.KeyType, arg1 ...kms.KeyOpts) (string, []byte, error) {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "CreateAndExportPubKeyBytes", arg0)
+	varargs := []interface{}{arg0}
+	for _, a := range arg1 {
+		varargs = append(varargs, a)
+	}
+	ret := m.ctrl.Call(m, "CreateAndExportPubKeyBytes", varargs...)
 	ret0, _ := ret[0].(string)
 	ret1, _ := ret[1].([]byte)
 	ret2, _ := ret[2].(error)
@@ -114,9 +122,10 @@ func (m *MockKeyManager) CreateAndExportPubKeyBytes(arg0 kms.KeyType) (string, [
 }
 
 // CreateAndExportPubKeyBytes indicates an expected call of CreateAndExportPubKeyBytes.
-func (mr *MockKeyManagerMockRecorder) CreateAndExportPubKeyBytes(arg0 interface{}) *gomock.Call {
+func (mr *MockKeyManagerMockRecorder) CreateAndExportPubKeyBytes(arg0 interface{}, arg1 ...interface{}) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "CreateAndExportPubKeyBytes", reflect.TypeOf((*MockKeyManager)(nil).CreateAndExportPubKeyBytes), arg0)
+	varargs := append([]interface{}{arg0}, arg1...)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "CreateAndExportPubKeyBytes", reflect.TypeOf((*MockKeyManager)(nil).CreateAndExportPubKeyBytes), varargs...)
 }
 
 // ExportPubKeyBytes mocks base method.
@@ -172,24 +181,33 @@ func (mr *MockKeyManagerMockRecorder) ImportPrivateKey(arg0, arg1 interface{}, a
 }
 
 // PubKeyBytesToHandle mocks base method.
-func (m *MockKeyManager) PubKeyBytesToHandle(arg0 []byte, arg1 kms.KeyType) (interface{}, error) {
+func (m *MockKeyManager) PubKeyBytesToHandle(arg0 []byte, arg1 kms.KeyType, arg2 ...kms.KeyOpts) (interface{}, error) {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "PubKeyBytesToHandle", arg0, arg1)
+	varargs := []interface{}{arg0, arg1}
+	for _, a := range arg2 {
+		varargs = append(varargs, a)
+	}
+	ret := m.ctrl.Call(m, "PubKeyBytesToHandle", varargs...)
 	ret0, _ := ret[0].(interface{})
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
 
 // PubKeyBytesToHandle indicates an expected call of PubKeyBytesToHandle.
-func (mr *MockKeyManagerMockRecorder) PubKeyBytesToHandle(arg0, arg1 interface{}) *gomock.Call {
+func (mr *MockKeyManagerMockRecorder) PubKeyBytesToHandle(arg0, arg1 interface{}, arg2 ...interface{}) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "PubKeyBytesToHandle", reflect.TypeOf((*MockKeyManager)(nil).PubKeyBytesToHandle), arg0, arg1)
+	varargs := append([]interface{}{arg0, arg1}, arg2...)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "PubKeyBytesToHandle", reflect.TypeOf((*MockKeyManager)(nil).PubKeyBytesToHandle), varargs...)
 }
 
 // Rotate mocks base method.
-func (m *MockKeyManager) Rotate(arg0 kms.KeyType, arg1 string) (string, interface{}, error) {
+func (m *MockKeyManager) Rotate(arg0 kms.KeyType, arg1 string, arg2 ...kms.KeyOpts) (string, interface{}, error) {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "Rotate", arg0, arg1)
+	varargs := []interface{}{arg0, arg1}
+	for _, a := range arg2 {
+		varargs = append(varargs, a)
+	}
+	ret := m.ctrl.Call(m, "Rotate", varargs...)
 	ret0, _ := ret[0].(string)
 	ret1, _ := ret[1].(interface{})
 	ret2, _ := ret[2].(error)
@@ -197,7 +215,8 @@ func (m *MockKeyManager) Rotate(arg0 kms.KeyType, arg1 string) (string, interfac
 }
 
 // Rotate indicates an expected call of Rotate.
-func (mr *MockKeyManagerMockRecorder) Rotate(arg0, arg1 interface{}) *gomock.Call {
+func (mr *MockKeyManagerMockRecorder) Rotate(arg0, arg1 interface{}, arg2 ...interface{}) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Rotate", reflect.TypeOf((*MockKeyManager)(nil).Rotate), arg0, arg1)
+	varargs := append([]interface{}{arg0, arg1}, arg2...)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Rotate", reflect.TypeOf((*MockKeyManager)(nil).Rotate), varargs...)
 }

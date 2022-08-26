@@ -1,5 +1,6 @@
 /*
 Copyright SecureKey Technologies Inc. All Rights Reserved.
+Copyright Avast Software. All Rights Reserved.
 
 SPDX-License-Identifier: Apache-2.0
 */
@@ -22,6 +23,7 @@ import (
 	"github.com/hyperledger/aries-framework-go/pkg/didcomm/common/service"
 	"github.com/hyperledger/aries-framework-go/pkg/didcomm/dispatcher"
 	"github.com/hyperledger/aries-framework-go/pkg/didcomm/protocol/didexchange"
+	"github.com/hyperledger/aries-framework-go/pkg/didcomm/protocol/legacyconnection"
 	"github.com/hyperledger/aries-framework-go/pkg/didcomm/transport"
 	"github.com/hyperledger/aries-framework-go/pkg/doc/did"
 	"github.com/hyperledger/aries-framework-go/pkg/framework/aries/api"
@@ -109,6 +111,7 @@ func (handler *MessageHandler) HandleInboundEnvelope(envelope *transport.Envelop
 	}
 
 	isDIDEx := (&didexchange.Service{}).Accept(msg.Type())
+	isLegacyConn := (&legacyconnection.Service{}).Accept(msg.Type())
 
 	isV2, err := service.IsDIDCommV2(&msg)
 	if err != nil {
@@ -126,8 +129,8 @@ func (handler *MessageHandler) HandleInboundEnvelope(envelope *transport.Envelop
 		return fmt.Errorf("handling inbound peer DID: %w", err)
 	}
 
-	// if msg is not a didexchange message, do additional handling
-	if !isDIDEx {
+	// if msg is not a didexchange and legacy-connection message, do additional handling
+	if !isDIDEx && !isLegacyConn {
 		myDID, theirDID, err = handler.getDIDs(envelope, msg)
 		if err != nil {
 			return fmt.Errorf("get DIDs for message: %w", err)
@@ -152,9 +155,20 @@ func (handler *MessageHandler) HandleInboundEnvelope(envelope *transport.Envelop
 	}
 
 	if foundService != nil {
+		props := make(map[string]interface{})
+
 		switch foundService.Name() {
 		// perf: DID exchange doesn't require myDID and theirDID
 		case didexchange.DIDExchange:
+		// perf: legacy-connection requires envelope.ToKey when sending Connection Response (it will sign connection
+		// data with this key)
+		case legacyconnection.LegacyConnection:
+			// When type of envelope.Message is connections/request, the key which was used to decrypt message is the
+			// same key which was sent during invitation. If ParentThreadID is missed (Interop issues), that key will be
+			// used to sign connection-data while sending connection response
+			if msg.Type() == legacyconnection.RequestMsgType && msg.ParentThreadID() == "" {
+				props[legacyconnection.InvitationRecipientKey] = base58.Encode(envelope.ToKey)
+			}
 		default:
 			if !gotDIDs {
 				myDID, theirDID, err = handler.getDIDs(envelope, msg)
@@ -164,7 +178,7 @@ func (handler *MessageHandler) HandleInboundEnvelope(envelope *transport.Envelop
 			}
 		}
 
-		_, err = foundService.HandleInbound(msg, service.NewDIDCommContext(myDID, theirDID, nil))
+		_, err = foundService.HandleInbound(msg, service.NewDIDCommContext(myDID, theirDID, props))
 
 		return err
 	}

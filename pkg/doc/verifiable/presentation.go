@@ -286,17 +286,22 @@ func (vp *Presentation) raw() (*rawPresentation, error) {
 		return nil, err
 	}
 
-	return &rawPresentation{
+	rp := &rawPresentation{
 		// TODO single value contexts should be compacted as part of Issue [#1730]
 		// Not compacting now to support interoperability
 		Context:      vp.Context,
 		ID:           vp.ID,
 		Type:         typesToRaw(vp.Type),
-		Credential:   vp.credentials,
 		Holder:       vp.Holder,
 		Proof:        proof,
 		CustomFields: vp.CustomFields,
-	}, nil
+	}
+
+	if len(vp.credentials) > 0 {
+		rp.Credential = vp.credentials
+	}
+
+	return rp, nil
 }
 
 // rawPresentation is a basic verifiable credential.
@@ -471,13 +476,15 @@ func decodeCredentials(rawCred interface{}, opts *presentationOpts) ([]interface
 		return nil, nil
 	}
 
-	marshalSingleCredFn := func(cred interface{}) (interface{}, error) {
+	unmarshalSingleCredFn := func(cred interface{}) (interface{}, error) {
 		// Check the case when VC is defined in string format (e.g. JWT).
 		// Decode credential and keep result of decoding.
 		if sCred, ok := cred.(string); ok {
 			bCred := []byte(sCred)
 
-			credDecoded, err := decodeRaw(bCred, mapOpts(opts))
+			// TODO: check if JWT VPs require the raw JWT for their JWT VCs
+			//  if so, save the raw JWT strings returned from decodeRaw()
+			credDecoded, _, err := decodeRaw(bCred, mapOpts(opts))
 			if err != nil {
 				return nil, fmt.Errorf("decode credential of presentation: %w", err)
 			}
@@ -500,7 +507,7 @@ func decodeCredentials(rawCred interface{}, opts *presentationOpts) ([]interface
 		creds := make([]interface{}, len(cred))
 
 		for i := range cred {
-			c, err := marshalSingleCredFn(cred[i])
+			c, err := unmarshalSingleCredFn(cred[i])
 			if err != nil {
 				return nil, err
 			}
@@ -511,7 +518,7 @@ func decodeCredentials(rawCred interface{}, opts *presentationOpts) ([]interface
 		return creds, nil
 	default:
 		// single credential
-		c, err := marshalSingleCredFn(cred)
+		c, err := unmarshalSingleCredFn(cred)
 		if err != nil {
 			return nil, err
 		}

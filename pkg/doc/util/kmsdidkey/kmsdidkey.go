@@ -1,5 +1,6 @@
 /*
 Copyright SecureKey Technologies Inc. All Rights Reserved.
+Copyright Avast Software. All Rights Reserved.
 
 SPDX-License-Identifier: Apache-2.0
 */
@@ -11,6 +12,7 @@ import (
 	"encoding/json"
 	"fmt"
 
+	"github.com/btcsuite/btcutil/base58"
 	commonpb "github.com/google/tink/go/proto/common_go_proto"
 
 	cryptoapi "github.com/hyperledger/aries-framework-go/pkg/crypto"
@@ -217,4 +219,15 @@ func extractRawKey(didKey string) ([]byte, uint64, error) {
 	}
 
 	return pubKey, code, nil
+}
+
+// GetBase58PubKeyFromDIDKey parses the did:key DID and returns the key's base58 encoded value.
+func GetBase58PubKeyFromDIDKey(didKey string) (string, error) {
+	key, err := EncryptionPubKeyFromDIDKey(didKey)
+	if err != nil {
+		return "", fmt.Errorf("GetBase58PubKeyFromDIDKey: failed to parse public key bytes from "+
+			"%s: %w", didKey, err)
+	}
+
+	return base58.Encode(key.X), nil
 }

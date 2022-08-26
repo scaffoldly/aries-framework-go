@@ -1,5 +1,6 @@
 /*
 Copyright SecureKey Technologies Inc. All Rights Reserved.
+Copyright Avast Software. All Rights Reserved.
 
 SPDX-License-Identifier: Apache-2.0
 */
@@ -15,8 +16,8 @@ import (
 	"github.com/hyperledger/aries-framework-go/pkg/crypto"
 	"github.com/hyperledger/aries-framework-go/pkg/kms"
 	"github.com/hyperledger/aries-framework-go/pkg/kms/localkms"
-	"github.com/hyperledger/aries-framework-go/pkg/mock/didcomm/protocol"
 	mockstorage "github.com/hyperledger/aries-framework-go/pkg/mock/storage"
+	"github.com/hyperledger/aries-framework-go/pkg/secretlock"
 	"github.com/hyperledger/aries-framework-go/pkg/secretlock/noop"
 	"github.com/hyperledger/aries-framework-go/spi/storage"
 )
@@ -194,12 +195,28 @@ func TestBuildDIDKeyByKMSKeyType(t *testing.T) {
 	}
 }
 
+type kmsProvider struct {
+	store             kms.Store
+	secretLockService secretlock.Service
+}
+
+func (k *kmsProvider) StorageProvider() kms.Store {
+	return k.store
+}
+
+func (k *kmsProvider) SecretLock() secretlock.Service {
+	return k.secretLockService
+}
+
 func newKMS(t *testing.T, store storage.Provider) kms.KeyManager {
 	t.Helper()
 
-	kmsProv := &protocol.MockProvider{
-		StoreProvider: store,
-		CustomLock:    &noop.NoLock{},
+	kmsStore, err := kms.NewAriesProviderWrapper(store)
+	require.NoError(t, err)
+
+	kmsProv := &kmsProvider{
+		store:             kmsStore,
+		secretLockService: &noop.NoLock{},
 	}
 
 	customKMS, err := localkms.New("local-lock://primary/test/", kmsProv)
@@ -284,6 +301,52 @@ func TestEncryptionPubKeyFromDIDKey(t *testing.T) {
 
 			require.NoError(t, err)
 			require.NotEmpty(t, pubKey)
+		})
+	}
+}
+
+func TestGetBase58PubKeyFromDIDKey(t *testing.T) {
+	didKeyED25519 := "did:key:z6MkpTHR8VNsBxYAAWHut2Geadd9jSwuBV8xRoAnwWsdvktH"
+	pubKey := "B12NYF8RrR3h41TDCTJojY59usg3mbtbjnFs7Eud1Y6u"
+
+	tests := []struct {
+		name   string
+		didKey string
+	}{
+		{
+			name:   "test ED25519 key",
+			didKey: didKeyED25519,
+		},
+		{
+			name:   "invalid did:key code",
+			didKey: "did:key:zabcd",
+		},
+		{
+			name:   "invalid did:key method",
+			didKey: "did:key:invalid",
+		},
+	}
+
+	for _, tt := range tests {
+		tc := tt
+		t.Run(tc.name, func(t *testing.T) {
+			resultKey, err := GetBase58PubKeyFromDIDKey(tc.didKey)
+			switch tc.name {
+			case "invalid did:key code":
+				require.ErrorContains(t, err, "GetBase58PubKeyFromDIDKey: failed to parse public key bytes")
+				require.Empty(t, resultKey)
+
+				return
+			case "invalid did:key method":
+				require.ErrorContains(t, err,
+					"GetBase58PubKeyFromDIDKey: failed to parse public key bytes from did:key:invalid:")
+				require.Empty(t, resultKey)
+
+				return
+			}
+
+			require.NoError(t, err)
+			require.Equal(t, pubKey, resultKey)
 		})
 	}
 }

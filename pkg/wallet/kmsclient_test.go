@@ -50,7 +50,10 @@ func TestKeyManager(t *testing.T) {
 			MasterLockCipher: masterLockCipherText,
 		}
 
-		kmgr, err := keyManager().createKeyManager(profileInfo, mockstorage.NewMockStoreProvider(),
+		kmsStore, err := kmsapi.NewAriesProviderWrapper(mockstorage.NewMockStoreProvider())
+		require.NoError(t, err)
+
+		kmgr, err := keyManager().createKeyManager(profileInfo, kmsStore,
 			&unlockOpts{passphrase: samplePassPhrase})
 		require.NoError(t, err)
 		require.NotEmpty(t, kmgr)
@@ -70,7 +73,10 @@ func TestKeyManager(t *testing.T) {
 			MasterLockCipher: masterLockCipherText,
 		}
 
-		kmgr, err := keyManager().createKeyManager(profileInfo, mockstorage.NewMockStoreProvider(),
+		kmsStore, err := kmsapi.NewAriesProviderWrapper(mockstorage.NewMockStoreProvider())
+		require.NoError(t, err)
+
+		kmgr, err := keyManager().createKeyManager(profileInfo, kmsStore,
 			&unlockOpts{secretLockSvc: masterLock})
 		require.NoError(t, err)
 		require.NotEmpty(t, kmgr)
@@ -90,8 +96,11 @@ func TestKeyManager(t *testing.T) {
 			MasterLockCipher: masterLockCipherText,
 		}
 
+		kmsStore, err := kmsapi.NewAriesProviderWrapper(mockstorage.NewMockStoreProvider())
+		require.NoError(t, err)
+
 		// use wrong passphrase
-		kmgr, err := keyManager().createKeyManager(profileInfo, mockstorage.NewMockStoreProvider(),
+		kmgr, err := keyManager().createKeyManager(profileInfo, kmsStore,
 			&unlockOpts{passphrase: samplePassPhrase + "wrong"})
 		require.Empty(t, kmgr)
 		require.Error(t, err)
@@ -116,7 +125,10 @@ func TestKeyManager(t *testing.T) {
 		masterLockBad, err := pbkdf2.NewMasterLock(samplePassPhrase+"wrong", sha256.New, 0, nil)
 		require.NoError(t, err)
 
-		kmgr, err := keyManager().createKeyManager(profileInfo, mockstorage.NewMockStoreProvider(),
+		kmsStore, err := kmsapi.NewAriesProviderWrapper(mockstorage.NewMockStoreProvider())
+		require.NoError(t, err)
+
+		kmgr, err := keyManager().createKeyManager(profileInfo, kmsStore,
 			&unlockOpts{secretLockSvc: masterLockBad})
 		require.Empty(t, kmgr)
 		require.Error(t, err)
@@ -130,7 +142,10 @@ func TestKeyManager(t *testing.T) {
 			KeyServerURL: sampleKeyServerURL,
 		}
 
-		kmgr, err := keyManager().createKeyManager(profileInfo, mockstorage.NewMockStoreProvider(),
+		kmsStore, err := kmsapi.NewAriesProviderWrapper(mockstorage.NewMockStoreProvider())
+		require.NoError(t, err)
+
+		kmgr, err := keyManager().createKeyManager(profileInfo, kmsStore,
 			&unlockOpts{authToken: sampleRemoteKMSAuth})
 		require.NoError(t, err)
 		require.NotEmpty(t, kmgr)
@@ -144,7 +159,10 @@ func TestKeyManager(t *testing.T) {
 			User: uuid.New().String(),
 		}
 
-		kmgr, err := keyManager().createKeyManager(profileInfo, mockstorage.NewMockStoreProvider(),
+		kmsStore, err := kmsapi.NewAriesProviderWrapper(mockstorage.NewMockStoreProvider())
+		require.NoError(t, err)
+
+		kmgr, err := keyManager().createKeyManager(profileInfo, kmsStore,
 			&unlockOpts{authToken: sampleRemoteKMSAuth})
 		require.Empty(t, kmgr)
 		require.Error(t, err)
@@ -166,7 +184,10 @@ func TestImportKeyJWK(t *testing.T) {
 		MasterLockCipher: masterLockCipherText,
 	}
 
-	kmgr, err := keyManager().createKeyManager(profileInfo, mockstorage.NewMockStoreProvider(),
+	kmsStore, err := kmsapi.NewAriesProviderWrapper(mockstorage.NewMockStoreProvider())
+	require.NoError(t, err)
+
+	kmgr, err := keyManager().createKeyManager(profileInfo, kmsStore,
 		&unlockOpts{passphrase: samplePassPhrase})
 	require.NoError(t, err)
 	require.NotEmpty(t, kmgr)
@@ -350,7 +371,10 @@ func TestImportKeyBase58(t *testing.T) {
 		MasterLockCipher: masterLockCipherText,
 	}
 
-	kmgr, e := keyManager().createKeyManager(profileInfo, mockstorage.NewMockStoreProvider(),
+	kmsStore, err := kmsapi.NewAriesProviderWrapper(mockstorage.NewMockStoreProvider())
+	require.NoError(t, err)
+
+	kmgr, e := keyManager().createKeyManager(profileInfo, kmsStore,
 		&unlockOpts{passphrase: samplePassPhrase})
 	require.NoError(t, e)
 	require.NotEmpty(t, kmgr)
@@ -508,5 +532,70 @@ func TestKMSSigner(t *testing.T) {
 		res, err := signer.Sign([]byte("1234"))
 		require.Error(t, err)
 		require.Empty(t, res)
+	})
+
+	t.Run("test signer Alg()", func(t *testing.T) {
+		tests := []struct {
+			name        string
+			kmsKT       kmsapi.KeyType
+			expectedAlg string
+		}{
+			{
+				name:        "test ECDSA alg from P256 key type in DER format",
+				kmsKT:       kmsapi.ECDSAP256DER,
+				expectedAlg: p256Alg,
+			},
+			{
+				name:        "test ECDSA alg from P256 key type in IEEE format",
+				kmsKT:       kmsapi.ECDSAP256IEEEP1363,
+				expectedAlg: p256Alg,
+			},
+			{
+				name:        "test ECDSA alg from P384 key type in DER format",
+				kmsKT:       kmsapi.ECDSAP384DER,
+				expectedAlg: p384Alg,
+			},
+			{
+				name:        "test ECDSA alg from P384 key type in IEEE format",
+				kmsKT:       kmsapi.ECDSAP384IEEEP1363,
+				expectedAlg: p384Alg,
+			},
+			{
+				name:        "test ECDSA alg from P521 key type in DER format",
+				kmsKT:       kmsapi.ECDSAP521DER,
+				expectedAlg: p521Alg,
+			},
+			{
+				name:        "test ECDSA alg from P521 key type in IEEE format",
+				kmsKT:       kmsapi.ECDSAP521IEEEP1363,
+				expectedAlg: p521Alg,
+			},
+			{
+				name:        "test EdDSA alg from ed25519 key type",
+				kmsKT:       kmsapi.ED25519,
+				expectedAlg: edAlg,
+			},
+			{
+				name: "test empty alg from empty key type",
+			},
+		}
+
+		for _, tt := range tests {
+			tc := tt
+
+			t.Run(tc.name, func(t *testing.T) {
+				tok, err := sessionManager().createSession(uuid.New().String(),
+					&mockkms.KeyManager{ExportPubKeyTypeValue: tc.kmsKT}, 500*time.Millisecond)
+				require.NoError(t, err)
+
+				signer, err := newKMSSigner(tok, &mockcrypto.Crypto{SignErr: errors.New(sampleKeyMgrErr)}, &ProofOptions{
+					VerificationMethod: "did:example#123",
+				})
+				require.NoError(t, err)
+
+				alg := signer.Alg()
+				require.Equal(t, tc.expectedAlg, alg)
+			})
+		}
 	})
 }

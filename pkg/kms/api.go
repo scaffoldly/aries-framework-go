@@ -7,10 +7,10 @@
 package kms
 
 import (
+	"errors"
 	"io"
 
 	"github.com/hyperledger/aries-framework-go/pkg/secretlock"
-	"github.com/hyperledger/aries-framework-go/spi/storage"
 )
 
 // package kms provides the KMS interface of the framework. This includes the provider interface necessary for building
@@ -19,11 +19,12 @@ import (
 // KeyManager manages keys and their storage for the aries framework.
 type KeyManager interface {
 	// Create a new key/keyset/key handle for the type kt
+	// Some key types may require additional attributes described in `opts`
 	// Returns:
 	//  - keyID of the handle
 	//  - handle instance (to private key)
 	//  - error if failure
-	Create(kt KeyType) (string, interface{}, error)
+	Create(kt KeyType, opts ...KeyOpts) (string, interface{}, error)
 	// Get key handle for the given keyID
 	// Returns:
 	//  - handle instance (to private key)
@@ -31,11 +32,12 @@ type KeyManager interface {
 	Get(keyID string) (interface{}, error)
 	// Rotate a key referenced by keyID and return a new handle of a keyset including old key and
 	// new key with type kt. It also returns the updated keyID as the first return value
+	// Some key types may require additional attributes described in `opts`
 	// Returns:
 	//  - new KeyID
 	//  - handle instance (to private key)
 	//  - error if failure
-	Rotate(kt KeyType, keyID string) (string, interface{}, error)
+	Rotate(kt KeyType, keyID string, opts ...KeyOpts) (string, interface{}, error)
 	// ExportPubKeyBytes will fetch a key referenced by id then gets its public key in raw bytes and returns it.
 	// The key must be an asymmetric key.
 	// Returns:
@@ -44,17 +46,19 @@ type KeyManager interface {
 	ExportPubKeyBytes(keyID string) ([]byte, KeyType, error)
 	// CreateAndExportPubKeyBytes will create a key of type kt and export its public key in raw bytes and returns it.
 	// The key must be an asymmetric key.
+	// Some key types may require additional attributes described in `opts`
 	// Returns:
 	//  - keyID of the new handle created.
 	//  - marshalled public key []byte
 	//  - error if it fails to export the public key bytes
-	CreateAndExportPubKeyBytes(kt KeyType) (string, []byte, error)
+	CreateAndExportPubKeyBytes(kt KeyType, opts ...KeyOpts) (string, []byte, error)
 	// PubKeyBytesToHandle transforms pubKey raw bytes into a key handle of keyType. This function is only a utility to
 	// provide a public key handle for Tink/Crypto primitive execution, it does not persist the key handle.
+	// Some key types may require additional attributes described in `opts`
 	// Returns:
 	//  - handle instance to the public key of type keyType
 	//  - error if keyType is not supported, the key does not match keyType or unmarshal fails
-	PubKeyBytesToHandle(pubKey []byte, kt KeyType) (interface{}, error)
+	PubKeyBytesToHandle(pubKey []byte, kt KeyType, opts ...KeyOpts) (interface{}, error)
 	// ImportPrivateKey will import privKey into the KMS storage for the given keyType then returns the new key id and
 	// the newly persisted Handle.
 	// 'privKey' possible types are: *ecdsa.PrivateKey and ed25519.PrivateKey
@@ -68,9 +72,26 @@ type KeyManager interface {
 	ImportPrivateKey(privKey interface{}, kt KeyType, opts ...PrivateKeyOpts) (string, interface{}, error)
 }
 
+// ErrKeyNotFound is an error type that a KMS expects from the Store.Get method if no key stored under the given
+// key ID could be found.
+var ErrKeyNotFound = errors.New("key not found")
+
+// Store defines the storage capability required by a KeyManager Provider.
+type Store interface {
+	// Put stores the given key under the given keysetID.
+	Put(keysetID string, key []byte) error
+	// Get retrieves the key stored under the given keysetID. If no key is found, the returned error is expected
+	// to wrap ErrKeyNotFound. KMS implementations may check to see if the error wraps that error type for certain
+	// operations.
+	Get(keysetID string) (key []byte, err error)
+	// Delete deletes the key stored under the given keysetID. A KeyManager will assume that attempting to delete
+	// a non-existent key will not return an error.
+	Delete(keysetID string) error
+}
+
 // Provider for KeyManager builder/constructor.
 type Provider interface {
-	StorageProvider() storage.Provider
+	StorageProvider() Store
 	SecretLock() secretlock.Service
 }
 
@@ -120,6 +141,10 @@ const (
 	X25519ECDHKW = "X25519ECDHKW"
 	// BLS12381G2 BBS+ key type value.
 	BLS12381G2 = "BLS12381G2"
+	// CLCredDef key type value.
+	CLCredDef = "CLCredDef"
+	// CLMasterSecret key type value.
+	CLMasterSecret = "CLMasterSecret"
 )
 
 // KeyType represents a key type supported by the KMS.
@@ -168,6 +193,10 @@ const (
 	X25519ECDHKWType = KeyType(X25519ECDHKW)
 	// BLS12381G2Type BBS+ key type value.
 	BLS12381G2Type = KeyType(BLS12381G2)
+	// CLCredDefType type value.
+	CLCredDefType = KeyType(CLCredDef)
+	// CLMasterSecretType key type value.
+	CLMasterSecretType = KeyType(CLMasterSecret)
 )
 
 // CryptoBox is a libsodium crypto service used by legacy authcrypt packer.

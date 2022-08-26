@@ -199,6 +199,8 @@ func decodeVCJWTToJSON(vcBytes []byte, publicKey *rsa.PublicKey) {
 		abort("failed to decode credential: %v", err)
 	}
 
+	credential.JWT = ""
+
 	jsonBytes, err := credential.MarshalJSON()
 	if err != nil {
 		abort("failed to marshall verifiable credential to JSON: %v", err)
@@ -313,6 +315,10 @@ func (s *rsaSigner) Sign(data []byte) ([]byte, error) {
 	hashed := hash.Sum(nil)
 
 	return rsa.SignPKCS1v15(rand.Reader, s.privateKey, crypto.SHA256, hashed)
+}
+
+func (s *rsaSigner) Alg() string {
+	return "PS256"
 }
 
 func abort(msg string, args ...interface{}) {

@@ -29,7 +29,6 @@ import (
 	"github.com/hyperledger/aries-framework-go/pkg/secretlock"
 	"github.com/hyperledger/aries-framework-go/pkg/secretlock/local"
 	"github.com/hyperledger/aries-framework-go/pkg/secretlock/local/masterlock/hkdf"
-	"github.com/hyperledger/aries-framework-go/spi/storage"
 )
 
 const (
@@ -38,6 +37,11 @@ const (
 
 	// number of sections in verification method.
 	vmSectionCount = 2
+
+	p256Alg = "ES256"
+	p384Alg = "ES384"
+	p521Alg = "ES521"
+	edAlg   = "EdDSA"
 )
 
 // supported key types for import key base58 (all constants defined in lower case).
@@ -88,7 +92,7 @@ type walletKeyManager struct {
 }
 
 func (k *walletKeyManager) createKeyManager(profileInfo *profile,
-	storeProvider storage.Provider, opts *unlockOpts) (kms.KeyManager, error) {
+	storeProvider kms.Store, opts *unlockOpts) (kms.KeyManager, error) {
 	if profileInfo.MasterLockCipher == "" && profileInfo.KeyServerURL == "" {
 		return nil, fmt.Errorf("invalid wallet profile")
 	}
@@ -128,21 +132,21 @@ func createMasterLock(secretLockSvc secretlock.Service) (string, error) {
 }
 
 type kmsProvider struct {
-	storageProvider storage.Provider
+	storageProvider kms.Store
 	secretLock      secretlock.Service
 }
 
-func (k kmsProvider) StorageProvider() storage.Provider {
+func (k *kmsProvider) StorageProvider() kms.Store {
 	return k.storageProvider
 }
 
-func (k kmsProvider) SecretLock() secretlock.Service {
+func (k *kmsProvider) SecretLock() secretlock.Service {
 	return k.secretLock
 }
 
 // createLocalKeyManager creates and returns local KMS instance.
 func createLocalKeyManager(user, passphrase, masterLockCipher string,
-	masterLocker secretlock.Service, storeProvider storage.Provider) (*localkms.LocalKMS, error) {
+	masterLocker secretlock.Service, storeProvider kms.Store) (*localkms.LocalKMS, error) {
 	var err error
 	if passphrase != "" {
 		masterLocker, err = getDefaultSecretLock(passphrase)
@@ -183,6 +187,7 @@ func createRemoteKeyManager(opts *unlockOpts, keyServerURL string) *webkms.Remot
 }
 
 type kmsSigner struct {
+	keyType   kms.KeyType
 	keyHandle interface{}
 	crypto    crypto.Crypto
 	multiMsg  bool
@@ -206,12 +211,19 @@ func newKMSSigner(authToken string, c crypto.Crypto, opts *ProofOptions) (*kmsSi
 		return nil, errors.New("invalid verification method format")
 	}
 
-	keyHandler, err := keyManager.Get(vmSplit[vmSectionCount-1])
+	kid := vmSplit[vmSectionCount-1]
+
+	keyHandler, err := keyManager.Get(kid)
 	if err != nil {
 		return nil, err
 	}
 
-	return &kmsSigner{keyHandle: keyHandler, crypto: c, multiMsg: opts.ProofType == BbsBlsSignature2020}, nil
+	_, kt, err := keyManager.ExportPubKeyBytes(kid)
+	if err != nil {
+		return nil, err
+	}
+
+	return &kmsSigner{keyType: kt, keyHandle: keyHandler, crypto: c, multiMsg: opts.ProofType == BbsBlsSignature2020}, nil
 }
 
 func (s *kmsSigner) textToLines(txt string) [][]byte {
@@ -238,6 +250,21 @@ func (s *kmsSigner) Sign(data []byte) ([]byte, error) {
 	}
 
 	return v, nil
+}
+
+func (s *kmsSigner) Alg() string {
+	switch s.keyType {
+	case kms.ECDSAP256IEEEP1363, kms.ECDSAP256DER:
+		return p256Alg
+	case kms.ECDSAP384IEEEP1363, kms.ECDSAP384DER:
+		return p384Alg
+	case kms.ECDSAP521IEEEP1363, kms.ECDSAP521DER:
+		return p521Alg
+	case kms.ED25519:
+		return edAlg
+	}
+
+	return ""
 }
 
 // importKeyJWK imports private key jwk found in key contents,
